@@ -18,7 +18,8 @@ public class BatchSynthesisPropertiesDefinition
     /// <summary>
     /// The requested destination container. It is an URL with Service adhoc SAS to a writeable container in Azure Blob storage.
     /// </summary>
-    public Uri DestinationContainerUrl { get; set; }
+    /// Use BYOS instead, Managed Identity
+    // public Uri DestinationContainerUrl { get; set; }
 
     /// <summary>
     /// The destination path of the output in the destination container.
