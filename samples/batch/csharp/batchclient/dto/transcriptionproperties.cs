@@ -28,7 +28,7 @@ namespace BatchClient
         [JsonConverter(typeof(TimeSpanConverter))]
         public TimeSpan Duration { get; set; }
 
-        public Uri DestinationContainerUrl { get; set; }
+        // public Uri DestinationContainerUrl { get; set; }
 
         public int TimeToLiveHours { get; set; }
 
