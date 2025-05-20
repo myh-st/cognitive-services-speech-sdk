@@ -58,7 +58,7 @@ public class BatchSynthesisProperties
 {
     public int TimeToLiveInHours { get; set; }
 
-    public Uri? DestinationContainerUrl { get; set; }
+    // public Uri? DestinationContainerUrl { get; set; }
 
     public string? DestinationPath { get; set; }
 
