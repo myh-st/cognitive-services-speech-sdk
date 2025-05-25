@@ -236,7 +236,7 @@
     "CreateConsolidatedOutputFiles": false,
     "TimerBasedExecution": true,
     "CreateAudioProcessedContainer": true,
-    "IsByosEnabledSubscription": false,
+    "IsByosEnabledSubscription": true,
     "MessagesPerFunctionExecution": 1000,
     "FilesPerTranscriptionJob": 100,
     "RetryLimit": 4,
