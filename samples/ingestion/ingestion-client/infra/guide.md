@@ -55,7 +55,7 @@ To test, we recommend you use [Microsoft Azure Storage Explorer](https://azure.m
 
 To deploy the required infrastructure, click the button below:
 
-[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fmyh-st%2Fcognitive-services-speech-sdk%2Fenabled-BYOS%2Fsamples%2Fingestion%2Fingestion-client%2Finfra%2Fmain.json)
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fmyh-st%2Fcognitive-services-speech-sdk%2Fenabled-BYOS%2Fsamples%2Fingestion%2Fingestion-client%2Finfra%2FBYOS%2Farm_template_byos.json)
 
 This will result in the screen below on your browser. You will need to fill in the form provided. It is
 important that all the information is correct. Let us look at the form and go through each field.
