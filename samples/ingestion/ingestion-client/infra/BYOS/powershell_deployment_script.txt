@@ -1,0 +1,255 @@
+# Azure Speech Batch Transcription Deployment Script (PowerShell)
+param(
+    [Parameter(Mandatory=$true)]
+    [ValidateSet("byos", "regular", "help")]
+    [string]$Scenario,
+    
+    [Parameter(Mandatory=$false)]
+    [string]$TargetResourceGroup,
+    
+    [Parameter(Mandatory=$false)]
+    [string]$SpeechKey,
+    
+    [Parameter(Mandatory=$false)]
+    [string]$SpeechRegion,
+    
+    [Parameter(Mandatory=$false)]
+    [string]$ExistingStorageName,
+    
+    [Parameter(Mandatory=$false)]
+    [string]$ExistingStorageResourceGroup,
+    
+    [Parameter(Mandatory=$false)]
+    [string]$NewStorageName,
+    
+    [Parameter(Mandatory=$false)]
+    [string]$Locale = "en-US | English (United States)",
+    
+    [Parameter(Mandatory=$false)]
+    [string]$DeploymentId = (Get-Date -Format "yyyyMMddHHmmss")
+)
+
+# Function to write colored output
+function Write-ColorOutput($ForegroundColor) {
+    $fc = $host.UI.RawUI.ForegroundColor
+    $host.UI.RawUI.ForegroundColor = $ForegroundColor
+    if ($args) {
+        Write-Output $args
+    } else {
+        $input | Write-Output
+    }
+    $host.UI.RawUI.ForegroundColor = $fc
+}
+
+function Write-Info($message) {
+    Write-ColorOutput Blue "[INFO] $message"
+}
+
+function Write-Success($message) {
+    Write-ColorOutput Green "[SUCCESS] $message"
+}
+
+function Write-Warning($message) {
+    Write-ColorOutput Yellow "[WARNING] $message"
+}
+
+function Write-Error($message) {
+    Write-ColorOutput Red "[ERROR] $message"
+}
+
+# Function to check prerequisites
+function Test-Prerequisites {
+    Write-Info "Checking prerequisites..."
+    
+    # Check if Azure PowerShell is installed
+    if (-not (Get-Module -ListAvailable -Name Az)) {
+        Write-Error "Azure PowerShell module is not installed. Please install it first with: Install-Module -Name Az"
+        exit 1
+    }
+    
+    # Check if user is logged in
+    try {
+        $context = Get-AzContext
+        if (-not $context) {
+            Write-Error "Not logged in to Azure. Please run 'Connect-AzAccount' first."
+            exit 1
+        }
+    } catch {
+        Write-Error "Not logged in to Azure. Please run 'Connect-AzAccount' first."
+        exit 1
+    }
+    
+    Write-Success "Prerequisites check passed"
+}
+
+# Function to validate parameters
+function Test-Parameters($scenario) {
+    if ($scenario -eq "byos") {
+        if ([string]::IsNullOrEmpty($ExistingStorageName) -or [string]::IsNullOrEmpty($ExistingStorageResourceGroup)) {
+            Write-Error "For BYOS deployment, ExistingStorageName and ExistingStorageResourceGroup are required"
+            exit 1
+        }
+        
+        # Check if existing storage account exists
+        try {
+            $storageAccount = Get-AzStorageAccount -ResourceGroupName $ExistingStorageResourceGroup -Name $ExistingStorageName -ErrorAction Stop
+            Write-Success "Existing storage account validated: $($storageAccount.StorageAccountName)"
+        } catch {
+            Write-Error "Storage account '$ExistingStorageName' not found in resource group '$ExistingStorageResourceGroup'"
+            exit 1
+        }
+    } elseif ($scenario -eq "regular") {
+        if ([string]::IsNullOrEmpty($NewStorageName)) {
+            Write-Error "For regular deployment, NewStorageName is required"
+            exit 1
+        }
+    }
+    
+    # Validate required parameters
+    if ([string]::IsNullOrEmpty($SpeechKey) -or [string]::IsNullOrEmpty($SpeechRegion)) {
+        Write-Error "SpeechKey and SpeechRegion are required"
+        exit 1
+    }
+    
+    if ([string]::IsNullOrEmpty($TargetResourceGroup)) {
+        Write-Error "TargetResourceGroup is required"
+        exit 1
+    }
+}
+
+# Function to deploy BYOS scenario
+function Deploy-BYOS {
+    Write-Info "Deploying BYOS scenario..."
+    Write-Info "Using existing storage: $ExistingStorageName in $ExistingStorageResourceGroup"
+    
+    $deploymentName = "speech-transcription-byos-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+    
+    try {
+        $deployment = New-AzResourceGroupDeployment `
+            -ResourceGroupName $TargetResourceGroup `
+            -TemplateFile "template.json" `
+            -StorageAccount $ExistingStorageName `
+            -UseExistingStorageAccount $true `
+            -ExistingStorageResourceGroup $ExistingStorageResourceGroup `
+            -IsByosEnabledDeployment $true `
+            -AzureSpeechServicesKey (ConvertTo-SecureString $SpeechKey -AsPlainText -Force) `
+            -AzureSpeechServicesRegion $SpeechRegion `
+            -Locale $Locale `
+            -DeploymentId $DeploymentId `
+            -Name $deploymentName `
+            -Verbose
+        
+        Write-Success "BYOS deployment completed successfully"
+        return $deployment
+    } catch {
+        Write-Error "Deployment failed: $($_.Exception.Message)"
+        exit 1
+    }
+}
+
+# Function to deploy regular scenario
+function Deploy-Regular {
+    Write-Info "Deploying regular scenario..."
+    Write-Info "Creating new storage account: $NewStorageName"
+    
+    $deploymentName = "speech-transcription-regular-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+    
+    try {
+        $deployment = New-AzResourceGroupDeployment `
+            -ResourceGroupName $TargetResourceGroup `
+            -TemplateFile "template.json" `
+            -StorageAccount $NewStorageName `
+            -UseExistingStorageAccount $false `
+            -IsByosEnabledDeployment $false `
+            -AzureSpeechServicesKey (ConvertTo-SecureString $SpeechKey -AsPlainText -Force) `
+            -AzureSpeechServicesRegion $SpeechRegion `
+            -Locale $Locale `
+            -DeploymentId $DeploymentId `
+            -Name $deploymentName `
+            -Verbose
+        
+        Write-Success "Regular deployment completed successfully"
+        return $deployment
+    } catch {
+        Write-Error "Deployment failed: $($_.Exception.Message)"
+        exit 1
+    }
+}
+
+# Function to show usage
+function Show-Usage {
+    Write-Host @"
+Azure Speech Batch Transcription Deployment Script (PowerShell)
+
+Usage:
+    .\deploy.ps1 -Scenario [byos|regular] [parameters...]
+
+Scenarios:
+    byos     - Deploy using existing storage account (BYOS)
+    regular  - Deploy with new storage account
+    help     - Show this help message
+
+Required Parameters:
+    -TargetResourceGroup     Target resource group name
+    -SpeechKey              Azure Speech Services key
+    -SpeechRegion           Azure Speech Services region
+
+Optional Parameters:
+    -Locale                 Speech recognition locale (default: "en-US | English (United States)")
+    -DeploymentId           Custom deployment ID (default: timestamp)
+
+For BYOS scenario:
+    -ExistingStorageName         Name of existing storage account
+    -ExistingStorageResourceGroup Resource group of existing storage
+
+For Regular scenario:
+    -NewStorageName             Name for new storage account
+
+Examples:
+    # BYOS deployment
+    .\deploy.ps1 -Scenario byos -TargetResourceGroup "my-rg" -SpeechKey "your-key" -SpeechRegion "westus" -ExistingStorageName "existingstorage" -ExistingStorageResourceGroup "speech-rg"
+
+    # Regular deployment
+    .\deploy.ps1 -Scenario regular -TargetResourceGroup "my-rg" -SpeechKey "your-key" -SpeechRegion "westus" -NewStorageName "newstorage123"
+"@
+}
+
+# Main script execution
+switch ($Scenario.ToLower()) {
+    "byos" {
+        Test-Prerequisites
+        Test-Parameters "byos"
+        $result = Deploy-BYOS
+        
+        Write-Info "Deployment Results:"
+        Write-Info "- Start Transcription Function: $($result.Outputs.startTranscriptionFunctionId.Value)"
+        Write-Info "- Fetch Transcription Function: $($result.Outputs.fetchTranscriptionFunctionId.Value)"
+        Write-Info "- Storage Account: $($result.Outputs.storageAccountName.Value)"
+        Write-Info "- BYOS Enabled: $($result.Outputs.isByosEnabled.Value)"
+        Write-Info "- Using Existing Storage: $($result.Outputs.usingExistingStorage.Value)"
+    }
+    "regular" {
+        Test-Prerequisites
+        Test-Parameters "regular"
+        $result = Deploy-Regular
+        
+        Write-Info "Deployment Results:"
+        Write-Info "- Start Transcription Function: $($result.Outputs.startTranscriptionFunctionId.Value)"
+        Write-Info "- Fetch Transcription Function: $($result.Outputs.fetchTranscriptionFunctionId.Value)"
+        Write-Info "- Storage Account: $($result.Outputs.storageAccountName.Value)"
+        Write-Info "- BYOS Enabled: $($result.Outputs.isByosEnabled.Value)"
+        Write-Info "- Using Existing Storage: $($result.Outputs.usingExistingStorage.Value)"
+    }
+    "help" {
+        Show-Usage
+        exit 0
+    }
+    default {
+        Write-Error "Unknown scenario: $Scenario"
+        Show-Usage
+        exit 1
+    }
+}
+
+Write-Success "Deployment script completed successfully!"
+Write-Info "Check the Azure Portal for deployment status and resources."

@@ -1,0 +1,72 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "StorageAccount": {
+      "value": "yourstorageaccountname"
+    },
+    "UseExistingStorageAccount": {
+      "value": true
+    },
+    "ExistingStorageResourceGroup": {
+      "value": "your-existing-rg-name"
+    },
+    "IsByosEnabledDeployment": {
+      "value": true
+    },
+    "AzureSpeechServicesKey": {
+      "value": "your-speech-services-key"
+    },
+    "AzureSpeechServicesRegion": {
+      "value": "westus"
+    },
+    "Locale": {
+      "value": "en-US | English (United States)"
+    },
+    "CustomModelId": {
+      "value": ""
+    },
+    "CustomEndpoint": {
+      "value": ""
+    },
+    "StartTranscriptionFunctionTimeInterval": {
+      "value": "0 */2 * * * *"
+    },
+    "ProfanityFilterMode": {
+      "value": "None"
+    },
+    "PunctuationMode": {
+      "value": "DictatedAndAutomatic"
+    },
+    "AddDiarization": {
+      "value": false
+    },
+    "AddWordLevelTimestamps": {
+      "value": false
+    },
+    "TextAnalyticsKey": {
+      "value": ""
+    },
+    "TextAnalyticsEndpoint": {
+      "value": ""
+    },
+    "SentimentAnalysis": {
+      "value": "None"
+    },
+    "PiiRedaction": {
+      "value": "None"
+    },
+    "SqlAdministratorLogin": {
+      "value": ""
+    },
+    "SqlAdministratorLoginPassword": {
+      "value": ""
+    },
+    "DeploymentId": {
+      "value": "[utcNow()]"
+    },
+    "CompletedServiceBusConnectionString": {
+      "value": ""
+    }
+  }
+}
