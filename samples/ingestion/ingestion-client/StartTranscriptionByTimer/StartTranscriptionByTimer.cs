@@ -28,11 +28,13 @@ namespace StartTranscriptionByTimer
 
         private readonly ILogger<StartTranscriptionByTimer> logger;
 
-        private readonly ServiceBusReceiver startTranscriptionServiceBusReceiver;
-
         private readonly AppConfig appConfig;
 
         private readonly IStartTranscriptionHelper transcriptionHelper;
+
+        private readonly ServiceBusClient startTranscriptionServiceBusClient;
+
+        private readonly string startTranscriptionQueueName;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="StartTranscriptionByTimer"/> class.
@@ -53,9 +55,9 @@ namespace StartTranscriptionByTimer
 
             serviceBusClientFactory = serviceBusClientFactory ?? throw new ArgumentNullException(nameof(serviceBusClientFactory));
             var startTranscriptionServiceBusClient = serviceBusClientFactory.CreateClient(ServiceBusClientName.StartTranscriptionServiceBusClient.ToString());
-
             var startTranscriptionQueueName = ServiceBusConnectionStringProperties.Parse(this.appConfig.StartTranscriptionServiceBusConnectionString).EntityPath;
-            this.startTranscriptionServiceBusReceiver = startTranscriptionServiceBusClient.CreateReceiver(startTranscriptionQueueName);
+            this.startTranscriptionServiceBusClient = startTranscriptionServiceBusClient;
+            this.startTranscriptionQueueName = startTranscriptionQueueName;
         }
 
         /// <summary>
@@ -75,7 +77,8 @@ namespace StartTranscriptionByTimer
             var validServiceBusMessages = new List<ServiceBusReceivedMessage>();
 
             this.logger.LogInformation("Pulling messages from queue...");
-            var messages = await this.startTranscriptionServiceBusReceiver.ReceiveMessagesAsync(this.appConfig.MessagesPerFunctionExecution, TimeSpan.FromSeconds(MessageReceiveTimeoutInSeconds)).ConfigureAwait(false);
+            await using var receiver = this.startTranscriptionServiceBusClient.CreateReceiver(this.startTranscriptionQueueName);
+            var messages = await receiver.ReceiveMessagesAsync(this.appConfig.MessagesPerFunctionExecution, TimeSpan.FromSeconds(MessageReceiveTimeoutInSeconds)).ConfigureAwait(false);
 
             if (messages == null || !messages.Any())
             {
@@ -92,12 +95,12 @@ namespace StartTranscriptionByTimer
                     {
                         if (this.transcriptionHelper.IsValidServiceBusMessage(message))
                         {
-                            await this.startTranscriptionServiceBusReceiver.RenewMessageLockAsync(message).ConfigureAwait(false);
+                            await receiver.RenewMessageLockAsync(message).ConfigureAwait(false);
                             validServiceBusMessages.Add(message);
                         }
                         else
                         {
-                            await this.startTranscriptionServiceBusReceiver.CompleteMessageAsync(message).ConfigureAwait(false);
+                            await receiver.CompleteMessageAsync(message).ConfigureAwait(false);
                         }
                     }
                     catch (ServiceBusException ex) when (ex.Reason == ServiceBusFailureReason.MessageLockLost)
