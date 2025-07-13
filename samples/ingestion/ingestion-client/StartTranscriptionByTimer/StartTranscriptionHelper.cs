@@ -27,13 +27,17 @@ namespace StartTranscriptionByTimer
 
     using Newtonsoft.Json;
 
-    public class StartTranscriptionHelper : IStartTranscriptionHelper
+    public class StartTranscriptionHelper : IStartTranscriptionHelper, IAsyncDisposable
     {
         private readonly ServiceBusSender startTranscriptionSender;
 
         private readonly ServiceBusReceiver startTranscriptionReceiver;
 
         private readonly ServiceBusSender fetchTranscriptionSender;
+
+        private readonly ServiceBusClient startTranscriptionServiceBusClient;
+
+        private readonly ServiceBusClient fetchTranscriptionServiceBusClient;
 
         private readonly ILogger<StartTranscriptionHelper> logger;
 
@@ -59,13 +63,13 @@ namespace StartTranscriptionByTimer
             this.locale = this.appConfig.Locale.Split('|')[0].Trim();
 
             serviceBusClientFactory = serviceBusClientFactory ?? throw new ArgumentNullException(nameof(serviceBusClientFactory));
-            var startTranscriptionServiceBusClient = serviceBusClientFactory.CreateClient(ServiceBusClientName.StartTranscriptionServiceBusClient.ToString());
+            this.startTranscriptionServiceBusClient = serviceBusClientFactory.CreateClient(ServiceBusClientName.StartTranscriptionServiceBusClient.ToString());
             var startTranscriptionQueueName = ServiceBusConnectionStringProperties.Parse(this.appConfig.StartTranscriptionServiceBusConnectionString).EntityPath;
-            this.startTranscriptionReceiver = startTranscriptionServiceBusClient.CreateReceiver(startTranscriptionQueueName);
-            this.startTranscriptionSender = startTranscriptionServiceBusClient.CreateSender(startTranscriptionQueueName);
-            var fetchTranscriptionServiceBusClient = serviceBusClientFactory.CreateClient(ServiceBusClientName.FetchTranscriptionServiceBusClient.ToString());
+            this.startTranscriptionReceiver = this.startTranscriptionServiceBusClient.CreateReceiver(startTranscriptionQueueName);
+            this.startTranscriptionSender = this.startTranscriptionServiceBusClient.CreateSender(startTranscriptionQueueName);
+            this.fetchTranscriptionServiceBusClient = serviceBusClientFactory.CreateClient(ServiceBusClientName.FetchTranscriptionServiceBusClient.ToString());
             var fetchTranscriptionQueueName = ServiceBusConnectionStringProperties.Parse(this.appConfig.FetchTranscriptionServiceBusConnectionString).EntityPath;
-            this.fetchTranscriptionSender = fetchTranscriptionServiceBusClient.CreateSender(fetchTranscriptionQueueName);
+            this.fetchTranscriptionSender = this.fetchTranscriptionServiceBusClient.CreateSender(fetchTranscriptionQueueName);
         }
 
         public async Task StartTranscriptionsAsync(IEnumerable<ServiceBusReceivedMessage> messages, DateTime startDateTime)
@@ -363,6 +367,30 @@ namespace StartTranscriptionByTimer
             catch (RequestFailedException e)
             {
                 this.logger.LogError($"Storage Exception {e} while writing error log to file and moving result");
+            }
+        }
+
+        /// <summary>
+        /// Dispose the ServiceBusClient instances to prevent handle leaks.
+        /// </summary>
+        /// <returns>A task representing the asynchronous dispose operation.</returns>
+        public async ValueTask DisposeAsync()
+        {
+            var disposeTasks = new List<Task>();
+
+            if (this.startTranscriptionServiceBusClient != null)
+            {
+                disposeTasks.Add(this.startTranscriptionServiceBusClient.DisposeAsync().AsTask());
+            }
+
+            if (this.fetchTranscriptionServiceBusClient != null)
+            {
+                disposeTasks.Add(this.fetchTranscriptionServiceBusClient.DisposeAsync().AsTask());
+            }
+
+            if (disposeTasks.Count > 0)
+            {
+                await Task.WhenAll(disposeTasks).ConfigureAwait(false);
             }
         }
     }

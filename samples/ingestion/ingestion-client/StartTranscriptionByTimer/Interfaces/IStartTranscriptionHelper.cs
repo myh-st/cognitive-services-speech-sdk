@@ -10,7 +10,7 @@ namespace StartTranscriptionByTimer
     using System.Threading.Tasks;
     using Azure.Messaging.ServiceBus;
 
-    public interface IStartTranscriptionHelper
+    public interface IStartTranscriptionHelper : IAsyncDisposable
     {
         Task StartTranscriptionsAsync(IEnumerable<ServiceBusReceivedMessage> messages, DateTime startDateTime);
 
