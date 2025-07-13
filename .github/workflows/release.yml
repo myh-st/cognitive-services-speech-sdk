@@ -1,0 +1,121 @@
+name: Create Release with Binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+      - 'ingestion-v*'
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+      
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: '8.0.x'
+        
+    - name: Restore dependencies
+      run: |
+        cd "samples/ingestion/ingestion-client"
+        dotnet restore StartTranscriptionByTimer/StartTranscriptionByTimer.csproj
+        dotnet restore StartTranscriptionByServiceBus/StartTranscriptionByServiceBus.csproj
+        dotnet restore FetchTranscription/FetchTranscription.csproj
+        
+    - name: Build and package StartTranscriptionByTimer
+      run: |
+        cd "samples/ingestion/ingestion-client/StartTranscriptionByTimer"
+        dotnet publish -c Release -o bin/Release/publish
+        Compress-Archive -Path bin/Release/publish/* -DestinationPath ../StartTranscriptionByTimer.zip
+        
+    - name: Build and package StartTranscriptionByServiceBus
+      run: |
+        cd "samples/ingestion/ingestion-client/StartTranscriptionByServiceBus"
+        dotnet publish -c Release -o bin/Release/publish
+        Compress-Archive -Path bin/Release/publish/* -DestinationPath ../StartTranscriptionByServiceBus.zip
+        
+    - name: Build and package FetchTranscription
+      run: |
+        cd "samples/ingestion/ingestion-client/FetchTranscription"
+        dotnet publish -c Release -o bin/Release/publish
+        Compress-Archive -Path bin/Release/publish/* -DestinationPath ../FetchTranscription.zip
+        
+    - name: Run tests
+      run: |
+        cd "samples/ingestion/ingestion-client"
+        dotnet test --configuration Release --verbosity normal
+        
+    - name: Create Release
+      uses: actions/create-release@v1
+      id: create_release
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref_name }}
+        release_name: Speech SDK Ingestion Client - ${{ github.ref_name }}
+        body: |
+          ## Service Bus Resource Leak Fixes - ${{ github.ref_name }}
+          
+          ### 🐛 Bugs Fixed
+          - **Service Bus Handle Leak**: Fixed QuotaExceeded error (4999 handle limit)
+          - **Resource Disposal**: Added IAsyncDisposable pattern to all Service Bus components
+          - **Memory Management**: Proper cleanup of ServiceBusClient instances
+          
+          ### 🔧 Components Updated  
+          - ✅ **StartTranscriptionByTimer**: Added IAsyncDisposable with parallel disposal
+          - ✅ **StartTranscriptionHelper**: Added IAsyncDisposable for shared Service Bus clients
+          - ✅ **TranscriptionProcessor**: Added IAsyncDisposable with resource cleanup
+          - ✅ **ARM Bicep Template**: Updated to use current repository for deployments
+          
+          ### 📦 Deployment Assets
+          This release includes the following binary packages:
+          - `StartTranscriptionByTimer.zip` - Timer-based batch processing (recommended)
+          - `StartTranscriptionByServiceBus.zip` - Service Bus triggered processing  
+          - `FetchTranscription.zip` - Transcription result fetching
+          
+          ### 🎯 Breaking Changes
+          - **None**: All changes are backward compatible
+          - **Configuration**: No changes required to existing deployments
+          
+          ### 📋 Deployment Instructions
+          1. Use the updated ARM Bicep template from `infra/main.bicep`
+          2. Template automatically uses fixed binaries from this release
+          3. No configuration changes required for existing deployments
+        draft: false
+        prerelease: false
+        
+    - name: Upload StartTranscriptionByTimer
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: samples/ingestion/ingestion-client/StartTranscriptionByTimer.zip
+        asset_name: StartTranscriptionByTimer.zip
+        asset_content_type: application/zip
+        
+    - name: Upload StartTranscriptionByServiceBus
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: samples/ingestion/ingestion-client/StartTranscriptionByServiceBus.zip
+        asset_name: StartTranscriptionByServiceBus.zip
+        asset_content_type: application/zip
+        
+    - name: Upload FetchTranscription
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: samples/ingestion/ingestion-client/FetchTranscription.zip
+        asset_name: FetchTranscription.zip
+        asset_content_type: application/zip

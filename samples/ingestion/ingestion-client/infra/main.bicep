@@ -144,7 +144,7 @@ param DeploymentId string = utcNow()
 param CompletedServiceBusConnectionString string = ''
 
 // Don't change the format for Version variable
-var Version = 'v2.1.12'
+var Version = 'v2.1.13-servicebus-leak-fix'
 var AudioInputContainer = 'audio-input'
 var AudioProcessedContainer = 'audio-processed'
 var ErrorFilesOutputContainer = 'audio-failed'
@@ -191,7 +191,7 @@ var AzureSpeechServicesEndpointUri = ((CustomEndpoint != '')
       ? 'https://${AzureSpeechServicesRegion}.api.cognitive.microsoft.us/'
       : 'https://${AzureSpeechServicesRegion}.api.cognitive.microsoft.com/'))
 var EndpointSuffix = (IsAzureGovDeployment ? 'core.usgovcloudapi.net' : 'core.windows.net')
-var BinariesRoutePrefix = 'https://github.com/Azure-Samples/cognitive-services-speech-sdk/releases/download/ingestion-'
+var BinariesRoutePrefix = 'https://github.com/myh-st/cognitive-services-speech-sdk/releases/download/ingestion-'
 var StartTranscriptionByTimerBinary = '${BinariesRoutePrefix}${Version}/StartTranscriptionByTimer.zip'
 var StartTranscriptionByServiceBusBinary = '${BinariesRoutePrefix}${Version}/StartTranscriptionByServiceBus.zip'
 var FetchTranscriptionBinary = '${BinariesRoutePrefix}${Version}/FetchTranscription.zip'
