@@ -83,7 +83,15 @@ namespace FetchTranscription
                 this.batchClient,
                 Options.Create(this.appConfig));
 
-            await transcriptionProcessor.ProcessTranscriptionJobAsync(serviceBusMessage, this.serviceProvider,  this.logger).ConfigureAwait(false);
+            try
+            {
+                await transcriptionProcessor.ProcessTranscriptionJobAsync(serviceBusMessage, this.serviceProvider, this.logger).ConfigureAwait(false);
+            }
+            finally
+            {
+                // Ensure ServiceBus clients are properly disposed to prevent handle leaks
+                await transcriptionProcessor.DisposeAsync().ConfigureAwait(false);
+            }
         }
     }
 }
