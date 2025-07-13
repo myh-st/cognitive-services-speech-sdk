@@ -22,7 +22,7 @@ namespace StartTranscriptionByTimer
     /// <summary>
     /// Start Transcription By Timer class.
     /// </summary>
-    public class StartTranscriptionByTimer
+    public class StartTranscriptionByTimer : IAsyncDisposable
     {
         private const double MessageReceiveTimeoutInSeconds = 60;
 
@@ -54,10 +54,8 @@ namespace StartTranscriptionByTimer
             this.transcriptionHelper = transcriptionHelper;
 
             serviceBusClientFactory = serviceBusClientFactory ?? throw new ArgumentNullException(nameof(serviceBusClientFactory));
-            var startTranscriptionServiceBusClient = serviceBusClientFactory.CreateClient(ServiceBusClientName.StartTranscriptionServiceBusClient.ToString());
-            var startTranscriptionQueueName = ServiceBusConnectionStringProperties.Parse(this.appConfig.StartTranscriptionServiceBusConnectionString).EntityPath;
-            this.startTranscriptionServiceBusClient = startTranscriptionServiceBusClient;
-            this.startTranscriptionQueueName = startTranscriptionQueueName;
+            this.startTranscriptionServiceBusClient = serviceBusClientFactory.CreateClient(ServiceBusClientName.StartTranscriptionServiceBusClient.ToString());
+            this.startTranscriptionQueueName = ServiceBusConnectionStringProperties.Parse(this.appConfig.StartTranscriptionServiceBusConnectionString).EntityPath;
         }
 
         /// <summary>
@@ -87,6 +85,11 @@ namespace StartTranscriptionByTimer
             }
 
             this.logger.LogInformation($"Got {messages.Count} in this iteration.");
+            
+            // Separate valid and invalid messages
+            var messagesToProcess = new List<ServiceBusReceivedMessage>();
+            var messagesToComplete = new List<ServiceBusReceivedMessage>();
+            
             foreach (var message in messages)
             {
                 if (message.LockedUntil > DateTime.UtcNow.AddSeconds(5))
@@ -95,19 +98,62 @@ namespace StartTranscriptionByTimer
                     {
                         if (this.transcriptionHelper.IsValidServiceBusMessage(message))
                         {
-                            await receiver.RenewMessageLockAsync(message).ConfigureAwait(false);
-                            validServiceBusMessages.Add(message);
+                            messagesToProcess.Add(message);
                         }
                         else
                         {
-                            await receiver.CompleteMessageAsync(message).ConfigureAwait(false);
+                            messagesToComplete.Add(message);
                         }
+                    }
+                    catch (Exception ex)
+                    {
+                        this.logger.LogError(ex, $"Error validating message {message.MessageId}");
+                        messagesToComplete.Add(message); // Complete invalid messages
+                    }
+                }
+            }
+
+            // Complete invalid messages
+            foreach (var message in messagesToComplete)
+            {
+                try
+                {
+                    await receiver.CompleteMessageAsync(message).ConfigureAwait(false);
+                }
+                catch (ServiceBusException ex) when (ex.Reason == ServiceBusFailureReason.MessageLockLost)
+                {
+                    this.logger.LogInformation($"Message lock expired for invalid message {message.MessageId}. Ignore message in this iteration.");
+                }
+                catch (Exception ex)
+                {
+                    this.logger.LogError(ex, $"Failed to complete invalid message {message.MessageId}");
+                }
+            }
+
+            // Renew locks for valid messages before processing
+            if (messagesToProcess.Any())
+            {
+                var renewTasks = messagesToProcess.Select(async message =>
+                {
+                    try
+                    {
+                        await receiver.RenewMessageLockAsync(message).ConfigureAwait(false);
+                        return message;
                     }
                     catch (ServiceBusException ex) when (ex.Reason == ServiceBusFailureReason.MessageLockLost)
                     {
-                        this.logger.LogInformation($"Message lock expired for message. Ignore message in this iteration.");
+                        this.logger.LogInformation($"Message lock expired for message {message.MessageId}. Excluding from processing.");
+                        return null;
                     }
-                }
+                    catch (Exception ex)
+                    {
+                        this.logger.LogError(ex, $"Failed to renew lock for message {message.MessageId}");
+                        return null;
+                    }
+                });
+
+                var renewedMessages = await Task.WhenAll(renewTasks).ConfigureAwait(false);
+                validServiceBusMessages.AddRange(renewedMessages.Where(m => m != null));
             }
 
             if (!validServiceBusMessages.Any())
@@ -118,7 +164,74 @@ namespace StartTranscriptionByTimer
 
             this.logger.LogInformation($"Pulled {validServiceBusMessages.Count} valid messages from queue.");
 
-            await this.transcriptionHelper.StartTranscriptionsAsync(validServiceBusMessages, startDateTime).ConfigureAwait(false);
+            try
+            {
+                // Process the valid messages
+                await this.transcriptionHelper.StartTranscriptionsAsync(validServiceBusMessages, startDateTime).ConfigureAwait(false);
+                
+                // Complete all successfully processed messages to remove them from the queue
+                foreach (var message in validServiceBusMessages)
+                {
+                    try
+                    {
+                        await receiver.CompleteMessageAsync(message).ConfigureAwait(false);
+                        this.logger.LogDebug($"Completed message with ID: {message.MessageId}");
+                    }
+                    catch (ServiceBusException ex) when (ex.Reason == ServiceBusFailureReason.MessageLockLost)
+                    {
+                        this.logger.LogWarning($"Failed to complete message {message.MessageId} due to lock expiry. Message will be retried.");
+                    }
+                    catch (Exception ex)
+                    {
+                        this.logger.LogError(ex, $"Failed to complete message {message.MessageId}");
+                        // Consider dead-lettering the message if completion fails repeatedly
+                        try
+                        {
+                            await receiver.DeadLetterMessageAsync(message, "ProcessingFailed", ex.Message).ConfigureAwait(false);
+                        }
+                        catch (ServiceBusException dlEx)
+                        {
+                            this.logger.LogError(dlEx, $"Failed to dead-letter message {message.MessageId}");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                this.logger.LogError(ex, "Failed to process transcription messages");
+                
+                // Abandon all messages on processing failure so they can be retried
+                foreach (var message in validServiceBusMessages)
+                {
+                    try
+                    {
+                        await receiver.AbandonMessageAsync(message).ConfigureAwait(false);
+                        this.logger.LogDebug($"Abandoned message with ID: {message.MessageId}");
+                    }
+                    catch (ServiceBusException abandonEx) when (abandonEx.Reason == ServiceBusFailureReason.MessageLockLost)
+                    {
+                        this.logger.LogWarning($"Failed to abandon message {message.MessageId} due to lock expiry.");
+                    }
+                    catch (Exception abandonEx)
+                    {
+                        this.logger.LogError(abandonEx, $"Failed to abandon message {message.MessageId}");
+                    }
+                }
+                
+                throw; // Re-throw to indicate function failure
+            }
+        }
+
+        /// <summary>
+        /// Dispose the ServiceBusClient to prevent handle leaks.
+        /// </summary>
+        /// <returns>A task representing the asynchronous dispose operation.</returns>
+        public async ValueTask DisposeAsync()
+        {
+            if (this.startTranscriptionServiceBusClient != null)
+            {
+                await this.startTranscriptionServiceBusClient.DisposeAsync().ConfigureAwait(false);
+            }
         }
     }
 }
