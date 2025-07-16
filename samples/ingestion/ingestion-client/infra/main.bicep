@@ -144,7 +144,7 @@ param DeploymentId string = utcNow()
 param CompletedServiceBusConnectionString string = ''
 
 // Don't change the format for Version variable
-var Version = 'v2.1.13-servicebus-leak-fix'
+var Version = 'v2.1.12'
 var AudioInputContainer = 'audio-input'
 var AudioProcessedContainer = 'audio-processed'
 var ErrorFilesOutputContainer = 'audio-failed'
@@ -191,10 +191,52 @@ var AzureSpeechServicesEndpointUri = ((CustomEndpoint != '')
       ? 'https://${AzureSpeechServicesRegion}.api.cognitive.microsoft.us/'
       : 'https://${AzureSpeechServicesRegion}.api.cognitive.microsoft.com/'))
 var EndpointSuffix = (IsAzureGovDeployment ? 'core.usgovcloudapi.net' : 'core.windows.net')
-var BinariesRoutePrefix = 'https://github.com/myh-st/cognitive-services-speech-sdk/releases/download/ingestion-'
-var StartTranscriptionByTimerBinary = '${BinariesRoutePrefix}${Version}/StartTranscriptionByTimer.zip'
-var StartTranscriptionByServiceBusBinary = '${BinariesRoutePrefix}${Version}/StartTranscriptionByServiceBus.zip'
-var FetchTranscriptionBinary = '${BinariesRoutePrefix}${Version}/FetchTranscription.zip'
+
+// Support multiple deployment methods
+@description('The deployment source type. Use "releases" for GitHub releases, "artifacts" for GitHub workflow artifacts, or "external" for custom URLs.')
+@allowed([
+  'releases'
+  'artifacts'
+  'external'
+])
+param DeploymentSource string = 'releases'
+
+@description('The repository URL for deployment when using artifacts source.')
+param RepositoryUrl string = 'https://github.com/myh-st/cognitive-services-speech-sdk'
+
+@description('The branch name for deployment when using artifacts source.')
+param RepositoryBranch string = 'codex/fix-servicebusreceiver-handle-allocation-issue'
+
+@description('Custom URL for StartTranscriptionByTimer function package when using external source.')
+param StartTranscriptionByTimerUrl string = ''
+
+@description('Custom URL for FetchTranscription function package when using external source.')
+param FetchTranscriptionUrl string = ''
+
+@description('Custom URL for StartTranscriptionByServiceBus function package when using external source.')
+param StartTranscriptionByServiceBusUrl string = ''
+
+// Configure deployment URLs based on source type
+var ReleaseBinariesPrefix = 'https://github.com/Azure-Samples/cognitive-services-speech-sdk/releases/download/ingestion-'
+var CustomBinariesPrefix = '${RepositoryUrl}/releases/download/'
+
+var StartTranscriptionByTimerBinary = (DeploymentSource == 'releases')
+  ? '${ReleaseBinariesPrefix}${Version}/StartTranscriptionByTimer.zip'
+  : (DeploymentSource == 'artifacts')
+    ? '${CustomBinariesPrefix}${Version}/StartTranscriptionByTimer.zip'
+    : StartTranscriptionByTimerUrl
+
+var StartTranscriptionByServiceBusBinary = (DeploymentSource == 'releases')
+  ? '${ReleaseBinariesPrefix}${Version}/StartTranscriptionByServiceBus.zip'
+  : (DeploymentSource == 'artifacts')
+    ? '${CustomBinariesPrefix}${Version}/StartTranscriptionByServiceBus.zip'
+    : StartTranscriptionByServiceBusUrl
+
+var FetchTranscriptionBinary = (DeploymentSource == 'releases')
+  ? '${ReleaseBinariesPrefix}${Version}/FetchTranscription.zip'
+  : (DeploymentSource == 'artifacts')
+    ? '${CustomBinariesPrefix}${Version}/FetchTranscription.zip'
+    : FetchTranscriptionUrl
 
 resource AppInsights 'Microsoft.Insights/components@2020-02-02-preview' = {
   name: AppInsightsName

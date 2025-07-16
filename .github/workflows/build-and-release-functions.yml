@@ -1,0 +1,296 @@
+# Build, Test, and Release Azure Functions for Speech Ingestion
+name: Build and Release Functions
+
+on:
+  push:
+    branches: [ 'main', 'master', 'codex/*' ]
+    paths:
+      - 'samples/ingestion/ingestion-client/StartTranscriptionByTimer/**'
+      - 'samples/ingestion/ingestion-client/FetchTranscription/**'
+      - 'samples/ingestion/ingestion-client/Connector/**'
+      - 'samples/ingestion/ingestion-client/Tests/**'
+      - 'samples/ingestion/ingestion-client/infra/**'
+      - 'samples/ingestion/ingestion-client/StartTranscriptionByServiceBus/**'
+  pull_request:
+    branches: [ 'main', 'master', 'codex/*' ]
+    paths:
+      - '**'
+  
+  # Allow manual trigger for releases
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Create a new release with built artifacts'
+        required: false
+        default: false
+        type: boolean
+      release_tag:
+        description: 'Release tag (e.g., v2.1.0)'
+        required: false
+        default: ''
+        type: string
+
+env:
+  WORKING_DIRECTORY: samples/ingestion/ingestion-client
+  DOTNET_VERSION: '8.0.x'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: Restore dependencies
+      run: dotnet restore BatchIngestionClient.sln
+      
+    - name: Build solution
+      run: dotnet build BatchIngestionClient.sln --configuration Release --no-restore
+      
+    - name: Run unit tests
+      run: dotnet test Tests/Tests.csproj --configuration Release --no-build --verbosity normal --logger trx --results-directory TestResults
+      
+    - name: Publish test results
+      uses: dorny/test-reporter@v1
+      if: success() || failure()
+      with:
+        name: .NET Tests
+        path: '${{ env.WORKING_DIRECTORY }}/TestResults/*.trx'
+        reporter: dotnet-trx
+        
+    - name: Build StartTranscriptionByTimer Function
+      run: |
+        dotnet publish StartTranscriptionByTimer/StartTranscriptionByTimer.csproj \
+          --configuration Release \
+          --output publish/StartTranscriptionByTimer \
+          --no-restore
+          
+    - name: Build FetchTranscription Function  
+      run: |
+        dotnet publish FetchTranscription/FetchTranscription.csproj \
+          --configuration Release \
+          --output publish/FetchTranscription \
+          --no-restore
+          
+    - name: Build StartTranscriptionByServiceBus Function
+      run: |
+        dotnet publish StartTranscriptionByServiceBus/StartTranscriptionByServiceBus.csproj \
+          --configuration Release \
+          --output publish/StartTranscriptionByServiceBus \
+          --no-restore
+
+    - name: Create deployment packages
+      run: |
+        cd publish
+        
+        # Create StartTranscriptionByTimer.zip
+        cd StartTranscriptionByTimer
+        zip -r ../StartTranscriptionByTimer.zip .
+        cd ..
+        
+        # Create FetchTranscription.zip  
+        cd FetchTranscription
+        zip -r ../FetchTranscription.zip .
+        cd ..
+        
+        # Create StartTranscriptionByServiceBus.zip
+        cd StartTranscriptionByServiceBus
+        zip -r ../StartTranscriptionByServiceBus.zip .
+        cd ..
+        
+        # Verify packages
+        ls -la *.zip
+        
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: function-packages-${{ github.sha }}
+        path: |
+          ${{ env.WORKING_DIRECTORY }}/publish/*.zip
+        retention-days: 30
+        
+    - name: Upload Bicep templates
+      uses: actions/upload-artifact@v4
+      with:
+        name: bicep-templates-${{ github.sha }}
+        path: |
+          ${{ env.WORKING_DIRECTORY }}/infra/**
+        retention-days: 30
+
+  # Validate Bicep templates
+  validate-infrastructure:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Setup Azure CLI
+      uses: azure/CLI@v1
+      with:
+        azcliversion: latest
+        
+    - name: Validate Bicep template
+      run: |
+        # Install Bicep
+        az bicep install
+        
+        # Validate main template
+        az bicep build --file infra/main.bicep --stdout > /dev/null
+        echo "✅ Bicep template validation passed"
+        
+        # Check for common issues
+        echo "🔍 Checking for potential issues..."
+        if grep -q "utcNow()" infra/main.bicep; then
+          echo "⚠️  Warning: Template uses utcNow() which can cause non-deterministic resource names"
+        fi
+        
+        if grep -q "providers(" infra/main.bicep; then
+          echo "⚠️  Warning: Template uses deprecated providers() function"
+        fi
+
+  # Create release if requested
+  create-release:
+    needs: [build-and-test, validate-infrastructure]
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' && 
+      github.event.inputs.create_release == 'true' &&
+      github.event.inputs.release_tag != ''
+      
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: function-packages-${{ github.sha }}
+        path: release-artifacts
+        
+    - name: Download Bicep templates
+      uses: actions/download-artifact@v4
+      with:
+        name: bicep-templates-${{ github.sha }}
+        path: release-artifacts/infra
+        
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ github.event.inputs.release_tag }}
+        name: Speech Ingestion Functions ${{ github.event.inputs.release_tag }}
+        body: |
+          ## Azure Functions Release for Speech Ingestion
+          
+          **Built from branch:** ${{ github.ref_name }}
+          **Commit:** ${{ github.sha }}
+          **Build date:** ${{ github.event.head_commit.timestamp }}
+          
+          ### 📦 Included Components
+          - StartTranscriptionByTimer.zip - Timer-triggered function for batch transcription
+          - FetchTranscription.zip - Function to process completed transcriptions  
+          - StartTranscriptionByServiceBus.zip - Service Bus triggered function
+          - Bicep templates for infrastructure deployment
+          
+          ### 🚀 Deployment
+          Use these artifacts with the ARM Bicep template by setting:
+          ```
+          DeploymentSource: 'releases'
+          ```
+          
+          Or deploy directly using Azure Functions deployment slots.
+          
+          ### 🔧 Recent Changes
+          - Fixed ServiceBus handle leak issue in StartTranscriptionHelper
+          - Updated to .NET 8.0 isolated runtime
+          - Improved error handling and resource disposal
+          
+        files: |
+          release-artifacts/*.zip
+          release-artifacts/infra/**
+        draft: false
+        prerelease: false
+
+  # Deployment job (only for specific branches)
+  deploy-to-azure:
+    needs: [build-and-test, validate-infrastructure]
+    runs-on: ubuntu-latest
+    if: |
+      startsWith(github.ref, 'refs/heads/codex/')
+    environment: 
+      name: azure-functions-${{ github.ref_name }}
+      
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: function-packages-${{ github.sha }}
+        path: artifacts
+        
+    - name: Login to Azure
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        
+    - name: Deploy infrastructure
+      if: github.ref == 'refs/heads/codex/fix-servicebusreceiver-handle-allocation-issue'
+      run: |
+        # Deploy Bicep template with repository deployment mode
+        az deployment group create \
+          --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
+          --template-file infra/main.bicep \
+          --parameters DeploymentSource=artifacts \
+          --parameters RepositoryUrl=${{ github.server_url }}/${{ github.repository }} \
+          --parameters StorageAccount=${{ vars.AZURE_STORAGE_ACCOUNT }} \
+          --parameters AzureSpeechServicesKey=${{ secrets.AZURE_SPEECH_KEY }} \
+          --parameters AzureSpeechServicesRegion=${{ vars.AZURE_SPEECH_REGION }} \
+          --confirm-with-what-if
+          
+    - name: Deploy StartTranscriptionByTimer Function
+      run: |
+        az functionapp deployment source config-zip \
+          --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
+          --name ${{ vars.START_TRANSCRIPTION_FUNCTION_NAME }} \
+          --src artifacts/StartTranscriptionByTimer.zip
+          
+    - name: Deploy FetchTranscription Function  
+      run: |
+        az functionapp deployment source config-zip \
+          --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
+          --name ${{ vars.FETCH_TRANSCRIPTION_FUNCTION_NAME }} \
+          --src artifacts/FetchTranscription.zip
+          
+    - name: Verify deployment
+      run: |
+        # Wait for functions to be ready
+        sleep 30
+        
+        # Check function status
+        az functionapp show \
+          --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
+          --name ${{ vars.START_TRANSCRIPTION_FUNCTION_NAME }} \
+          --query "state" -o tsv
+          
+        az functionapp show \
+          --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
+          --name ${{ vars.FETCH_TRANSCRIPTION_FUNCTION_NAME }} \
+          --query "state" -o tsv

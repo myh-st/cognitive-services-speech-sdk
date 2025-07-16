@@ -163,6 +163,26 @@ namespace StartTranscriptionByTimer
             return false;
         }
 
+        public async ValueTask DisposeAsync()
+        {
+            if (this.startTranscriptionReceiver != null)
+            {
+                await this.startTranscriptionReceiver.DisposeAsync().ConfigureAwait(false);
+            }
+
+            if (this.startTranscriptionSender != null)
+            {
+                await this.startTranscriptionSender.DisposeAsync().ConfigureAwait(false);
+            }
+
+            if (this.fetchTranscriptionSender != null)
+            {
+                await this.fetchTranscriptionSender.DisposeAsync().ConfigureAwait(false);
+            }
+
+            GC.SuppressFinalize(this);
+        }
+
         private static TimeSpan GetMessageDelayTime(int pollingCounter, AppConfig appConfig)
         {
             if (pollingCounter == 0)
