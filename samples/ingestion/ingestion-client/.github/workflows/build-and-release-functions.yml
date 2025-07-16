@@ -132,7 +132,7 @@ jobs:
       uses: azure/CLI@v1
       with:
         inlineScript: |
-          # Azure CLI is already available on ubuntu-latest
+          # Ensure Azure CLI is available
           az version
         
     - name: Validate Bicep template
