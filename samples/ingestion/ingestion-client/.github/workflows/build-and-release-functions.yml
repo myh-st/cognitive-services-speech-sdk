@@ -4,17 +4,8 @@ name: Build and Release Functions
 on:
   push:
     branches: [ 'main', 'master', 'codex/*' ]
-    paths:
-      - 'samples/ingestion/ingestion-client/StartTranscriptionByTimer/**'
-      - 'samples/ingestion/ingestion-client/FetchTranscription/**'
-      - 'samples/ingestion/ingestion-client/Connector/**'
-      - 'samples/ingestion/ingestion-client/Tests/**'
-      - 'samples/ingestion/ingestion-client/infra/**'
-      - 'samples/ingestion/ingestion-client/StartTranscriptionByServiceBus/**'
   pull_request:
     branches: [ 'main', 'master', 'codex/*' ]
-    paths:
-      - '**'
   
   # Allow manual trigger for releases
   workflow_dispatch:
