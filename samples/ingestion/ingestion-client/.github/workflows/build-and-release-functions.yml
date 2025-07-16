@@ -129,28 +129,32 @@ jobs:
       uses: actions/checkout@v4
       
     - name: Setup Azure CLI
-      run: |
-        # Install Azure CLI (already available on ubuntu-latest)
-        az version
+      uses: azure/CLI@v1
+      with:
+        inlineScript: |
+          # Azure CLI is already available on ubuntu-latest
+          az version
         
     - name: Validate Bicep template
-      run: |
-        # Install Bicep
-        az bicep install
-        
-        # Validate main template
-        az bicep build --file infra/main.bicep --stdout > /dev/null
-        echo "✅ Bicep template validation passed"
-        
-        # Check for common issues
-        echo "🔍 Checking for potential issues..."
-        if grep -q "utcNow()" infra/main.bicep; then
-          echo "⚠️  Warning: Template uses utcNow() which can cause non-deterministic resource names"
-        fi
-        
-        if grep -q "providers(" infra/main.bicep; then
-          echo "⚠️  Warning: Template uses deprecated providers() function"
-        fi
+      uses: azure/CLI@v1
+      with:
+        inlineScript: |
+          # Install Bicep
+          az bicep install
+          
+          # Validate main template
+          az bicep build --file infra/main.bicep --stdout > /dev/null
+          echo "✅ Bicep template validation passed"
+          
+          # Check for common issues
+          echo "🔍 Checking for potential issues..."
+          if grep -q "utcNow()" infra/main.bicep; then
+            echo "⚠️  Warning: Template uses utcNow() which can cause non-deterministic resource names"
+          fi
+          
+          if grep -q "providers(" infra/main.bicep; then
+            echo "⚠️  Warning: Template uses deprecated providers() function"
+          fi
 
   # Create release if requested
   create-release:

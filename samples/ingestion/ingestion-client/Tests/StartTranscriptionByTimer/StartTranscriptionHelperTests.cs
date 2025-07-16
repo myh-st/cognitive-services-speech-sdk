@@ -9,12 +9,14 @@ namespace Tests
     using System.Threading.Tasks;
     using Azure.Messaging.ServiceBus;
     using Connector;
+    using Connector.Enums;
     using Microsoft.Extensions.Azure;
     using Microsoft.Extensions.Logging;
     using Microsoft.Extensions.Options;
     using Microsoft.VisualStudio.TestTools.UnitTesting;
     using Moq;
     using StartTranscriptionByTimer;
+    using static Connector.Enums.ServiceBusClientName;
 
     [TestClass]
     public class StartTranscriptionHelperTests
@@ -50,11 +52,11 @@ namespace Tests
             this.appConfigOptions = Options.Create(appConfig);
 
             this.mockServiceBusClientFactory
-                .Setup(f => f.CreateClient(ServiceBusClientName.StartTranscriptionServiceBusClient.ToString()))
+                .Setup(f => f.CreateClient(Connector.Enums.ServiceBusClientName.StartTranscriptionServiceBusClient.ToString()))
                 .Returns(this.mockServiceBusClient.Object);
 
             this.mockServiceBusClientFactory
-                .Setup(f => f.CreateClient(ServiceBusClientName.FetchTranscriptionServiceBusClient.ToString()))
+                .Setup(f => f.CreateClient(Connector.Enums.ServiceBusClientName.FetchTranscriptionServiceBusClient.ToString()))
                 .Returns(this.mockServiceBusClient.Object);
 
             var mockReceiver = new Mock<ServiceBusReceiver>();
@@ -77,7 +79,7 @@ namespace Tests
         }
 
         [TestMethod]
-        public async Task DisposeAsync_ShouldDisposeAllServiceBusClients()
+        public async Task DisposeAsyncShouldDisposeAllServiceBusClients()
         {
             // Arrange
             this.mockServiceBusClient
@@ -93,15 +95,15 @@ namespace Tests
         }
 
         [TestMethod]
-        public void Constructor_ShouldCreateServiceBusClientsCorrectly()
+        public void ConstructorShouldCreateServiceBusClientsCorrectly()
         {
             // Assert
             this.mockServiceBusClientFactory.Verify(
-                f => f.CreateClient(ServiceBusClientName.StartTranscriptionServiceBusClient.ToString()),
+                f => f.CreateClient(Connector.Enums.ServiceBusClientName.StartTranscriptionServiceBusClient.ToString()),
                 Times.Once);
 
             this.mockServiceBusClientFactory.Verify(
-                f => f.CreateClient(ServiceBusClientName.FetchTranscriptionServiceBusClient.ToString()),
+                f => f.CreateClient(Connector.Enums.ServiceBusClientName.FetchTranscriptionServiceBusClient.ToString()),
                 Times.Once);
 
             this.mockServiceBusClient.Verify(c => c.CreateReceiver("start-queue"), Times.Once);
