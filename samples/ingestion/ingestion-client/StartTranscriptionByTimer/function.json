@@ -1,0 +1,12 @@
+{
+  "scriptFile": "../bin/StartTranscriptionByTimer.dll",
+  "entryPoint": "StartTranscriptionByTimer.StartTranscriptionByTimer.Run",
+  "bindings": [
+    {
+      "name": "timerInfo",
+      "type": "timerTrigger",
+      "direction": "in",
+      "schedule": "%StartTranscriptionFunctionTimeInterval%"
+    }
+  ]
+}

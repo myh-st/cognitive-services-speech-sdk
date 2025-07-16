@@ -76,49 +76,68 @@ namespace StartTranscriptionByTimer
 
             var validServiceBusMessages = new List<ServiceBusReceivedMessage>();
 
-            this.logger.LogInformation("Pulling messages from queue...");
-            await using var receiver = this.startTranscriptionServiceBusClient.CreateReceiver(this.startTranscriptionQueueName);
-            var messages = await receiver.ReceiveMessagesAsync(this.appConfig.MessagesPerFunctionExecution, TimeSpan.FromSeconds(MessageReceiveTimeoutInSeconds)).ConfigureAwait(false);
-
-            if (messages == null || !messages.Any())
+            try
             {
-                this.logger.LogInformation($"Got no messages in this iteration.");
-                return;
-            }
+                this.logger.LogInformation("Pulling messages from queue...");
+                await using var receiver = this.startTranscriptionServiceBusClient.CreateReceiver(this.startTranscriptionQueueName);
+                var messages = await receiver.ReceiveMessagesAsync(this.appConfig.MessagesPerFunctionExecution, TimeSpan.FromSeconds(MessageReceiveTimeoutInSeconds)).ConfigureAwait(false);
 
-            this.logger.LogInformation($"Got {messages.Count} in this iteration.");
-            foreach (var message in messages)
-            {
-                if (message.LockedUntil > DateTime.UtcNow.AddSeconds(5))
+                if (messages == null || !messages.Any())
                 {
-                    try
+                    this.logger.LogInformation($"Got no messages in this iteration.");
+                    return;
+                }
+
+                this.logger.LogInformation($"Got {messages.Count} in this iteration.");
+                foreach (var message in messages)
+                {
+                    if (message.LockedUntil > DateTime.UtcNow.AddSeconds(5))
                     {
-                        if (this.transcriptionHelper.IsValidServiceBusMessage(message))
+                        try
                         {
-                            await receiver.RenewMessageLockAsync(message).ConfigureAwait(false);
-                            validServiceBusMessages.Add(message);
+                            if (this.transcriptionHelper.IsValidServiceBusMessage(message))
+                            {
+                                await receiver.RenewMessageLockAsync(message).ConfigureAwait(false);
+                                validServiceBusMessages.Add(message);
+                            }
+                            else
+                            {
+                                await receiver.CompleteMessageAsync(message).ConfigureAwait(false);
+                            }
                         }
-                        else
+                        catch (ServiceBusException ex) when (ex.Reason == ServiceBusFailureReason.MessageLockLost)
                         {
-                            await receiver.CompleteMessageAsync(message).ConfigureAwait(false);
+                            this.logger.LogInformation($"Message lock expired for message. Ignore message in this iteration.");
                         }
-                    }
-                    catch (ServiceBusException ex) when (ex.Reason == ServiceBusFailureReason.MessageLockLost)
-                    {
-                        this.logger.LogInformation($"Message lock expired for message. Ignore message in this iteration.");
                     }
                 }
-            }
 
-            if (!validServiceBusMessages.Any())
+                if (!validServiceBusMessages.Any())
+                {
+                    this.logger.LogInformation("No valid messages were found in this function execution.");
+                    return;
+                }
+
+                this.logger.LogInformation($"Pulled {validServiceBusMessages.Count} valid messages from queue.");
+
+                await this.transcriptionHelper.StartTranscriptionsAsync(validServiceBusMessages, startDateTime).ConfigureAwait(false);
+            }
+            catch (ServiceBusException ex) when (ex.Reason == ServiceBusFailureReason.QuotaExceeded)
             {
-                this.logger.LogInformation("No valid messages were found in this function execution.");
-                return;
+                this.logger.LogError($"Service Bus QuotaExceeded: {ex.Message}");
+
+                // Optional: add custom alerting or retry logic here
             }
-
-            this.logger.LogInformation($"Pulled {validServiceBusMessages.Count} valid messages from queue.");
-
-            await this.transcriptionHelper.StartTranscriptionsAsync(validServiceBusMessages, startDateTime).ConfigureAwait(false);
+            catch (ServiceBusException ex)
+            {
+                this.logger.LogError($"Service Bus Exception: {ex.Message}");
+                throw;
+            }
+            catch (Exception ex)
+            {
+                this.logger.LogError($"Unhandled Exception in Run: {ex.Message}");
+                throw;
+            }
         }
     }
 }
