@@ -78,6 +78,54 @@ namespace FetchTranscription
             }
         }
 
+        /// <summary>
+        /// Dispose all ServiceBus resources to prevent handle leaks.
+        /// </summary>
+        /// <returns>A task representing the asynchronous dispose operation.</returns>
+        public async ValueTask DisposeAsync()
+        {
+            var disposeTasks = new List<Task>();
+
+            // Dispose senders
+            if (this.startTranscriptionServiceBusSender != null)
+            {
+                disposeTasks.Add(this.startTranscriptionServiceBusSender.DisposeAsync().AsTask());
+            }
+
+            if (this.fetchTranscriptionServiceBusSender != null)
+            {
+                disposeTasks.Add(this.fetchTranscriptionServiceBusSender.DisposeAsync().AsTask());
+            }
+
+            if (this.completedTranscriptionServiceBusSender != null)
+            {
+                disposeTasks.Add(this.completedTranscriptionServiceBusSender.DisposeAsync().AsTask());
+            }
+
+            // Dispose clients
+            if (this.startTranscriptionServiceBusClient != null)
+            {
+                disposeTasks.Add(this.startTranscriptionServiceBusClient.DisposeAsync().AsTask());
+            }
+
+            if (this.fetchTranscriptionServiceBusClient != null)
+            {
+                disposeTasks.Add(this.fetchTranscriptionServiceBusClient.DisposeAsync().AsTask());
+            }
+
+            if (this.completedTranscriptionServiceBusClient != null)
+            {
+                disposeTasks.Add(this.completedTranscriptionServiceBusClient.DisposeAsync().AsTask());
+            }
+
+            if (disposeTasks.Count > 0)
+            {
+                await Task.WhenAll(disposeTasks).ConfigureAwait(false);
+            }
+
+            GC.SuppressFinalize(this);
+        }
+
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types", Justification = "Catch general exception to allow manual retrying.")]
         public async Task ProcessTranscriptionJobAsync(TranscriptionStartedMessage serviceBusMessage, IServiceProvider serviceProvider, ILogger log)
         {
@@ -536,35 +584,6 @@ namespace FetchTranscription
             await this.ProcessReportFileAsync(reportFileContent, log).ConfigureAwait(false);
 
             this.batchClient.DeleteTranscriptionAsync(transcriptionLocation, subscriptionKey).ConfigureAwait(false).GetAwaiter().GetResult();
-        }
-
-        /// <summary>
-        /// Dispose the ServiceBusClient instances to prevent handle leaks.
-        /// </summary>
-        /// <returns>A task representing the asynchronous dispose operation.</returns>
-        public async ValueTask DisposeAsync()
-        {
-            var disposeTasks = new List<Task>();
-
-            if (this.startTranscriptionServiceBusClient != null)
-            {
-                disposeTasks.Add(this.startTranscriptionServiceBusClient.DisposeAsync().AsTask());
-            }
-
-            if (this.fetchTranscriptionServiceBusClient != null)
-            {
-                disposeTasks.Add(this.fetchTranscriptionServiceBusClient.DisposeAsync().AsTask());
-            }
-
-            if (this.completedTranscriptionServiceBusClient != null)
-            {
-                disposeTasks.Add(this.completedTranscriptionServiceBusClient.DisposeAsync().AsTask());
-            }
-
-            if (disposeTasks.Count > 0)
-            {
-                await Task.WhenAll(disposeTasks).ConfigureAwait(false);
-            }
         }
     }
 }

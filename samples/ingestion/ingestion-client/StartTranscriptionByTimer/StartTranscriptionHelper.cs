@@ -72,6 +72,49 @@ namespace StartTranscriptionByTimer
             this.fetchTranscriptionSender = this.fetchTranscriptionServiceBusClient.CreateSender(fetchTranscriptionQueueName);
         }
 
+        /// <summary>
+        /// Dispose all ServiceBus resources to prevent handle leaks.
+        /// </summary>
+        /// <returns>A task representing the asynchronous dispose operation.</returns>
+        public async ValueTask DisposeAsync()
+        {
+            var disposeTasks = new List<Task>();
+
+            // Dispose receivers and senders
+            if (this.startTranscriptionReceiver != null)
+            {
+                disposeTasks.Add(this.startTranscriptionReceiver.DisposeAsync().AsTask());
+            }
+
+            if (this.startTranscriptionSender != null)
+            {
+                disposeTasks.Add(this.startTranscriptionSender.DisposeAsync().AsTask());
+            }
+
+            if (this.fetchTranscriptionSender != null)
+            {
+                disposeTasks.Add(this.fetchTranscriptionSender.DisposeAsync().AsTask());
+            }
+
+            // Dispose ServiceBus clients
+            if (this.startTranscriptionServiceBusClient != null)
+            {
+                disposeTasks.Add(this.startTranscriptionServiceBusClient.DisposeAsync().AsTask());
+            }
+
+            if (this.fetchTranscriptionServiceBusClient != null)
+            {
+                disposeTasks.Add(this.fetchTranscriptionServiceBusClient.DisposeAsync().AsTask());
+            }
+
+            if (disposeTasks.Count > 0)
+            {
+                await Task.WhenAll(disposeTasks).ConfigureAwait(false);
+            }
+
+            GC.SuppressFinalize(this);
+        }
+
         public async Task StartTranscriptionsAsync(IEnumerable<ServiceBusReceivedMessage> messages, DateTime startDateTime)
         {
             var chunkedMessages = new List<List<ServiceBusReceivedMessage>>();
@@ -161,26 +204,6 @@ namespace StartTranscriptionByTimer
             }
 
             return false;
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            if (this.startTranscriptionReceiver != null)
-            {
-                await this.startTranscriptionReceiver.DisposeAsync().ConfigureAwait(false);
-            }
-
-            if (this.startTranscriptionSender != null)
-            {
-                await this.startTranscriptionSender.DisposeAsync().ConfigureAwait(false);
-            }
-
-            if (this.fetchTranscriptionSender != null)
-            {
-                await this.fetchTranscriptionSender.DisposeAsync().ConfigureAwait(false);
-            }
-
-            GC.SuppressFinalize(this);
         }
 
         private static TimeSpan GetMessageDelayTime(int pollingCounter, AppConfig appConfig)
@@ -387,30 +410,6 @@ namespace StartTranscriptionByTimer
             catch (RequestFailedException e)
             {
                 this.logger.LogError($"Storage Exception {e} while writing error log to file and moving result");
-            }
-        }
-
-        /// <summary>
-        /// Dispose the ServiceBusClient instances to prevent handle leaks.
-        /// </summary>
-        /// <returns>A task representing the asynchronous dispose operation.</returns>
-        public async ValueTask DisposeAsync()
-        {
-            var disposeTasks = new List<Task>();
-
-            if (this.startTranscriptionServiceBusClient != null)
-            {
-                disposeTasks.Add(this.startTranscriptionServiceBusClient.DisposeAsync().AsTask());
-            }
-
-            if (this.fetchTranscriptionServiceBusClient != null)
-            {
-                disposeTasks.Add(this.fetchTranscriptionServiceBusClient.DisposeAsync().AsTask());
-            }
-
-            if (disposeTasks.Count > 0)
-            {
-                await Task.WhenAll(disposeTasks).ConfigureAwait(false);
             }
         }
     }
