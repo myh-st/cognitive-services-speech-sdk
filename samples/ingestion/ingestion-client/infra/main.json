@@ -4,8 +4,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.29.47.4906",
-      "templateHash": "15510503880947378622"
+      "version": "0.36.177.2456",
+      "templateHash": "1441730234747893888"
     }
   },
   "parameters": {
@@ -221,6 +221,53 @@
       "metadata": {
         "description": "The connection string for the Service Bus Queue where you want to receive the notification of completion of the transcription for each audio file. If left empty, no completion notification will be sent."
       }
+    },
+    "DeploymentSource": {
+      "type": "string",
+      "defaultValue": "releases",
+      "allowedValues": [
+        "releases",
+        "artifacts",
+        "external"
+      ],
+      "metadata": {
+        "description": "The deployment source type. Use \"releases\" for GitHub releases, \"artifacts\" for GitHub workflow artifacts, or \"external\" for custom URLs."
+      }
+    },
+    "RepositoryUrl": {
+      "type": "string",
+      "defaultValue": "https://github.com/myh-st/cognitive-services-speech-sdk",
+      "metadata": {
+        "description": "The repository URL for deployment when using artifacts source."
+      }
+    },
+    "RepositoryBranch": {
+      "type": "string",
+      "defaultValue": "codex/fix-servicebusreceiver-handle-allocation-issue",
+      "metadata": {
+        "description": "The branch name for deployment when using artifacts source."
+      }
+    },
+    "StartTranscriptionByTimerUrl": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Custom URL for StartTranscriptionByTimer function package when using external source."
+      }
+    },
+    "FetchTranscriptionUrl": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Custom URL for FetchTranscription function package when using external source."
+      }
+    },
+    "StartTranscriptionByServiceBusUrl": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Custom URL for StartTranscriptionByServiceBus function package when using external source."
+      }
     }
   },
   "variables": {
@@ -267,10 +314,11 @@
     "IsAzureGovDeployment": "[or(equals(parameters('AzureSpeechServicesRegion'), 'usgovarizona'), equals(parameters('AzureSpeechServicesRegion'), 'usgovvirginia'))]",
     "AzureSpeechServicesEndpointUri": "[if(not(equals(parameters('CustomEndpoint'), '')), parameters('CustomEndpoint'), if(variables('IsAzureGovDeployment'), format('https://{0}.api.cognitive.microsoft.us/', parameters('AzureSpeechServicesRegion')), format('https://{0}.api.cognitive.microsoft.com/', parameters('AzureSpeechServicesRegion'))))]",
     "EndpointSuffix": "[if(variables('IsAzureGovDeployment'), 'core.usgovcloudapi.net', 'core.windows.net')]",
-    "BinariesRoutePrefix": "https://github.com/Azure-Samples/cognitive-services-speech-sdk/releases/download/ingestion-",
-    "StartTranscriptionByTimerBinary": "[format('{0}{1}/StartTranscriptionByTimer.zip', variables('BinariesRoutePrefix'), variables('Version'))]",
-    "StartTranscriptionByServiceBusBinary": "[format('{0}{1}/StartTranscriptionByServiceBus.zip', variables('BinariesRoutePrefix'), variables('Version'))]",
-    "FetchTranscriptionBinary": "[format('{0}{1}/FetchTranscription.zip', variables('BinariesRoutePrefix'), variables('Version'))]"
+    "ReleaseBinariesPrefix": "https://github.com/Azure-Samples/cognitive-services-speech-sdk/releases/download/ingestion-",
+    "CustomBinariesPrefix": "[format('{0}/releases/download/', parameters('RepositoryUrl'))]",
+    "StartTranscriptionByTimerBinary": "[if(equals(parameters('DeploymentSource'), 'releases'), format('{0}{1}/StartTranscriptionByTimer.zip', variables('ReleaseBinariesPrefix'), variables('Version')), if(equals(parameters('DeploymentSource'), 'artifacts'), format('{0}{1}/StartTranscriptionByTimer.zip', variables('CustomBinariesPrefix'), variables('Version')), parameters('StartTranscriptionByTimerUrl')))]",
+    "StartTranscriptionByServiceBusBinary": "[if(equals(parameters('DeploymentSource'), 'releases'), format('{0}{1}/StartTranscriptionByServiceBus.zip', variables('ReleaseBinariesPrefix'), variables('Version')), if(equals(parameters('DeploymentSource'), 'artifacts'), format('{0}{1}/StartTranscriptionByServiceBus.zip', variables('CustomBinariesPrefix'), variables('Version')), parameters('StartTranscriptionByServiceBusUrl')))]",
+    "FetchTranscriptionBinary": "[if(equals(parameters('DeploymentSource'), 'releases'), format('{0}{1}/FetchTranscription.zip', variables('ReleaseBinariesPrefix'), variables('Version')), if(equals(parameters('DeploymentSource'), 'artifacts'), format('{0}{1}/FetchTranscription.zip', variables('CustomBinariesPrefix'), variables('Version')), parameters('FetchTranscriptionUrl')))]"
   },
   "resources": [
     {
@@ -700,8 +748,8 @@
         "topicType": "Microsoft.Storage.StorageAccounts"
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Storage/storageAccounts', variables('StorageAccountName'))]",
-        "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('StorageAccountName'), 'default')]"
+        "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('StorageAccountName'), 'default')]",
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('StorageAccountName'))]"
       ]
     },
     {
@@ -745,8 +793,8 @@
       "dependsOn": [
         "[resourceId('Microsoft.EventGrid/systemTopics', variables('EventGridSystemTopicName'))]",
         "[resourceId('Microsoft.ServiceBus/namespaces/queues', variables('ServiceBusName'), 'start_transcription_queue')]",
-        "[resourceId('Microsoft.Storage/storageAccounts', variables('StorageAccountName'))]",
-        "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('StorageAccountName'), 'default')]"
+        "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('StorageAccountName'), 'default')]",
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('StorageAccountName'))]"
       ]
     },
     {
