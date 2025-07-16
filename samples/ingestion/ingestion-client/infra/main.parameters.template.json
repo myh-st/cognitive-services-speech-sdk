@@ -1,0 +1,56 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "StorageAccount": {
+      "value": "speechingestion001"
+    },
+    "AzureSpeechServicesKey": {
+      "reference": {
+        "keyVault": {
+          "id": "/subscriptions/{subscription-id}/resourceGroups/{resource-group}/providers/Microsoft.KeyVault/vaults/{keyvault-name}"
+        },
+        "secretName": "AzureSpeechServicesKey"
+      }
+    },
+    "AzureSpeechServicesRegion": {
+      "value": "westus"
+    },
+    "DeploymentSource": {
+      "value": "artifacts"
+    },
+    "RepositoryUrl": {
+      "value": "https://github.com/myh-st/cognitive-services-speech-sdk"
+    },
+    "Version": {
+      "value": "v2.1.0"
+    },
+    "Locale": {
+      "value": "en-US | English (United States)"
+    },
+    "StartTranscriptionFunctionTimeInterval": {
+      "value": "0 */2 * * * *"
+    },
+    "ProfanityFilterMode": {
+      "value": "None"
+    },
+    "PunctuationMode": {
+      "value": "Automatic"
+    },
+    "TextAnalyticsKey": {
+      "value": ""
+    },
+    "TextAnalyticsEndpoint": {
+      "value": ""
+    },
+    "SqlAdministratorLogin": {
+      "value": ""
+    },
+    "SqlAdministratorLoginPassword": {
+      "value": ""
+    },
+    "DeploymentId": {
+      "value": "speech-ingestion-01"
+    }
+  }
+}
