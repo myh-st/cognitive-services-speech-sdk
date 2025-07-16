@@ -5,15 +5,16 @@ on:
   push:
     branches: [ 'codex/*' ]
     paths:
-      - 'samples/ingestion/ingestion-client/StartTranscriptionByTimer/**'
-      - 'samples/ingestion/ingestion-client/FetchTranscription/**'
-      - 'samples/ingestion/ingestion-client/Connector/**'
-      - 'samples/ingestion/ingestion-client/Tests/**'
-      - 'samples/ingestion/ingestion-client/infra/**'
+      - 'StartTranscriptionByTimer/**'
+      - 'FetchTranscription/**'
+      - 'Connector/**'
+      - 'Tests/**'
+      - 'infra/**'
+      - 'StartTranscriptionByServiceBus/**'
   pull_request:
     branches: [ 'codex/*' ]
     paths:
-      - 'samples/ingestion/ingestion-client/**'
+      - '**'
   
   # Allow manual trigger for releases
   workflow_dispatch:
